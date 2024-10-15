@@ -77,7 +77,27 @@ if ( E57_BUILDING_SELF )
 endif()
 
 find_package( Threads REQUIRED )
-find_package( XercesC REQUIRED )
+
+set( E57_XML_PARSER XERCES CACHE STRING "Used XML library (Xerces, Expat, or TinyXML2)" )
+string( TOUPPER ${E57_XML_PARSER} E57_XML_PARSER )
+set( E57_SUPPORTED_XML_PARSERS XERCES EXPAT TINYXML2 )
+if ( NOT E57_XML_PARSER IN_LIST E57_SUPPORTED_XML_PARSERS )
+	message( FATAL_ERROR "Unsupported XML parser" )
+endif()
+
+if( E57_XML_PARSER STREQUAL XERCES )
+	find_package( XercesC REQUIRED )
+endif()
+if( E57_XML_PARSER STREQUAL EXPAT )
+	find_package( expat REQUIRED )
+endif()
+if( E57_XML_PARSER STREQUAL TINYXML2 )
+	find_package( tinyxml2 QUIET )
+	if( NOT tinyxml2_FOUND )
+		find_package( PkgConfig REQUIRED )
+		pkg_search_module( tinyxml2 REQUIRED IMPORTED_TARGET tinyxml2 )
+	endif()
+endif()
 
 option( E57_BUILD_SHARED
 	"Compile E57Format as a shared library"
@@ -195,7 +215,7 @@ target_compile_definitions( E57Format
 include( Sanitizers )
 
 # xerces
-if ( WIN32 )
+if ( WIN32 AND E57_XML_PARSER STREQUAL XERCES )
     option( USING_STATIC_XERCES "Turn on if you are linking with Xerces as a static lib" OFF )
     if ( USING_STATIC_XERCES )
         target_compile_definitions( E57Format
@@ -206,7 +226,19 @@ if ( WIN32 )
 endif()
 
 # Target Libraries
-target_link_libraries( E57Format PRIVATE XercesC::XercesC )
+if ( E57_XML_PARSER STREQUAL XERCES )
+	target_link_libraries( E57Format PRIVATE XercesC::XercesC )
+endif()
+if ( E57_XML_PARSER STREQUAL EXPAT )
+	target_link_libraries( E57Format PRIVATE expat::expat )
+endif()
+if ( E57_XML_PARSER STREQUAL TINYXML2 )
+	if( TARGET tinyxml2::tinyxml2 )
+		target_link_libraries( E57Format PRIVATE tinyxml2::tinyxml2 )
+	else()
+		target_link_libraries( E57Format PRIVATE PkgConfig::tinyxml2 )
+	endif()
+endif()
 
 # Install
 install(

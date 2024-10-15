@@ -25,10 +25,12 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include "ImageFileImpl.h"
+#include <cstring>
+
 #include "ASTMVersion.h"
 #include "CheckedFile.h"
 #include "E57XmlParser.h"
+#include "ImageFileImpl.h"
 #include "StringFunctions.h"
 #include "StructureNodeImpl.h"
 
