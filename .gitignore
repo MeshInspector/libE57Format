@@ -3,3 +3,5 @@ build
 .cache
 .idea
 cmake-build-*
+.vs
+/CMakeSettings.json
