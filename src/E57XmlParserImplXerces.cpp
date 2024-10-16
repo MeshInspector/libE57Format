@@ -50,8 +50,11 @@ namespace
       ustring u_str;
       if ( ( xml_str != nullptr ) && *xml_str )
       {
-         auto UTF8Transcoder = ( length == 0 ) ? TranscodeToStr( xml_str, "UTF-8" )
-                                               : TranscodeToStr( xml_str, length, "UTF-8" );
+         if ( length == 0 )
+         {
+            length = XMLString::stringLen( xml_str );
+         }
+         TranscodeToStr UTF8Transcoder( xml_str, length, "UTF-8" );
          u_str = ustring( reinterpret_cast<const char *>( UTF8Transcoder.str() ),
                           UTF8Transcoder.length() );
       }
@@ -67,7 +70,7 @@ namespace
          {
             length = XMLString::stringLen( u_str );
          }
-         auto UTF8Transcoder = TranscodeFromStr( (const XMLByte *)u_str, length, "UTF-8" );
+         TranscodeFromStr UTF8Transcoder( (const XMLByte *)u_str, length, "UTF-8" );
          xml_str = xmlstring( UTF8Transcoder.str(), UTF8Transcoder.length() );
       }
       return ( xml_str );
