@@ -28,6 +28,8 @@
 #include <tinyxml2.h>
 
 #include "E57XmlParser.h"
+#include "ImageFileImpl.h"
+#include "StringFunctions.h"
 
 using namespace e57;
 using namespace tinyxml2;
@@ -50,6 +52,7 @@ private:
 
 AttributeMapImplTinyXML2::AttributeMapImplTinyXML2( const XMLAttribute *attributes )
 {
+   // cache attribute names to speed up the lookup
    for ( const auto *attr = attributes; attr != NULL; attr = attr->Next() )
    {
       attributes_.emplace( attr->Name(), attr );
@@ -90,6 +93,7 @@ private:
    bool Visit( const XMLText &text ) override;
 
    XMLDocument xmlDocument_;
+   ustring curElem_;
 };
 
 void E57XmlParserImplTinyXML2::init()
@@ -107,7 +111,10 @@ void E57XmlParserImplTinyXML2::parse( ImageFileImplSharedPtr imf, E57XmlInputSou
    }
    if ( xmlDocument_.Parse( buffer.data(), buffer.size() ) != XML_SUCCESS )
    {
-      throw E57_EXCEPTION2( ErrorXMLParser, "failed to parse XML document" );
+      throw E57_EXCEPTION2( ErrorXMLParser,
+                            "errorID=" + toString( xmlDocument_.ErrorID() ) + " errorString=\"" +
+                               xmlDocument_.ErrorStr() +
+                               "\" line=" + toString( xmlDocument_.ErrorLineNum() ) );
    }
 
    xmlDocument_.Accept( this );
@@ -115,12 +122,14 @@ void E57XmlParserImplTinyXML2::parse( ImageFileImplSharedPtr imf, E57XmlInputSou
 
 ustring E57XmlParserImplTinyXML2::getContext() const
 {
-   return {};
+   return "fileName=" + imf_->fileName() + " qName=" + curElem_;
 }
 
 bool E57XmlParserImplTinyXML2::VisitEnter( const XMLElement &element,
                                            const XMLAttribute *attributes )
 {
+   curElem_ = element.Name();
+
    // find namespace declarations
    for ( const auto *attr = attributes; attr != NULL; attr = attr->Next() )
    {
@@ -142,6 +151,7 @@ bool E57XmlParserImplTinyXML2::VisitEnter( const XMLElement &element,
 
 bool E57XmlParserImplTinyXML2::VisitExit( const XMLElement &element )
 {
+   curElem_ = element.Name();
    E57XmlParserImpl::endElement_( element.Name() );
    return true;
 }

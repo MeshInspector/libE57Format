@@ -31,6 +31,8 @@
 #include <expat.h>
 
 #include "E57XmlParser.h"
+#include "ImageFileImpl.h"
+#include "StringFunctions.h"
 
 using namespace e57;
 
@@ -73,8 +75,9 @@ namespace
    }
 #endif
 
+   /// character used to split an element name into uri, local name, and prefix parts
 #ifdef E57_VERBOSE
-   constexpr char expatNamespaceSeparator = '&';
+   constexpr char expatNamespaceSeparator = '&'; /// visible character for debug purposes
 #else
    constexpr char expatNamespaceSeparator = '\x1f';
 #endif
@@ -85,11 +88,13 @@ namespace
       ustring localName;
       ustring prefix;
 
+      /// represent the element name in the fully qualified name format "prefix:name"
       ustring qName() const
       {
          return prefix.empty() ? localName : prefix + ":" + localName;
       }
 
+      /// split an element name into parts
       static ElementName fromRawName( const ustring &name )
       {
          const auto sep1 = name.find( expatNamespaceSeparator );
@@ -136,6 +141,7 @@ private:
 
 AttributeMapImplExpat::AttributeMapImplExpat( const XML_Char **attributes )
 {
+   // cache attribute names to speed up the lookup and to avoid converting on every call
    for ( const auto **attrPair = attributes; *attrPair != nullptr; attrPair += 2 )
    {
       const auto attrName = ElementName::fromRawName( toUString( attrPair[0] ) );
@@ -182,13 +188,14 @@ private:
    friend void XMLCALL characterDataHandler( void *userData, const XML_Char *s, int len );
 
    XML_Parser parser_{ nullptr };
+   ElementName curElem_;
 };
 
 void XMLCALL startNamespaceDeclHandler( void *userData, const XML_Char *prefix,
                                         const XML_Char *uri )
 {
 #ifdef E57_VERBOSE
-   std::cout << "start namespace decl, prefix=" + toUString( prefix ) + ", URI=" + toUString( uri )
+   std::cout << "startNamespaceDecl, prefix=" + toUString( prefix ) + " URI=" + toUString( uri )
              << std::endl;
 #endif
 
@@ -198,38 +205,43 @@ void XMLCALL startNamespaceDeclHandler( void *userData, const XML_Char *prefix,
 
 void XMLCALL startElementHandler( void *userData, const XML_Char *name, const XML_Char **attrs )
 {
+   auto *impl = reinterpret_cast<E57XmlParserImplExpat *>( userData );
+   auto &curElem = impl->curElem_;
+   curElem = ElementName::fromRawName( toUString( name ) );
+
 #ifdef E57_VERBOSE
-   std::cout << "start element, rawName=" + toUString( name ) +
-                   ", name=" + ElementName::fromRawName( toUString( name ) ).getContext()
-             << std::endl;
+   std::cout << "startElement" << std::endl;
+   std::cout << space( 2 ) << "URI:       " << curElem.uri << std::endl;
+   std::cout << space( 2 ) << "localName: " << curElem.localName << std::endl;
+   std::cout << space( 2 ) << "qName:     " << curElem.qName() << std::endl;
+
    int i = 0;
-   for ( auto **attrPair = attrs; *attrPair != NULL; attrPair += 2, i += 1 )
+   for ( const auto **attrPair = attrs; *attrPair != nullptr; attrPair += 2 )
    {
-      std::cout << "attribute[" + toString( i ) + "], name=" + toUString( attrPair[0] ) +
-                      ", value=" + toUString( attrPair[1] )
-                << std::endl;
+      const auto attrName = ElementName::fromRawName( toUString( attrPair[0] ) );
+      std::cout << space( 2 ) << "Attribute[" << i << "]" << std::endl;
+      std::cout << space( 4 ) << "URI:       " << attrName.uri << std::endl;
+      std::cout << space( 4 ) << "localName: " << attrName.localName << std::endl;
+      std::cout << space( 4 ) << "qName:     " << attrName.qName() << std::endl;
+      std::cout << space( 4 ) << "value:     " << toUString( attrPair[1] ) << std::endl;
    }
 #endif
 
-   auto *impl = reinterpret_cast<E57XmlParserImplExpat *>( userData );
    AttributeMapImplExpat attrMap( attrs );
-   const auto elemName = ElementName::fromRawName( toUString( name ) );
-   const auto qName = elemName.qName();
-   impl->startElement_( qName, attrMap );
+   impl->startElement_( curElem.qName(), attrMap );
 }
 
 void XMLCALL endElementHandler( void *userData, const XML_Char *name )
 {
 #ifdef E57_VERBOSE
-   std::cout << "end element, rawName=" + toUString( name ) +
-                   ", name=" + ElementName::fromRawName( toUString( name ) ).getContext()
-             << std::endl;
+   std::cout << "endElement" << std::endl;
 #endif
 
    auto *impl = reinterpret_cast<E57XmlParserImplExpat *>( userData );
-   const auto elemName = ElementName::fromRawName( toUString( name ) );
-   const auto qName = elemName.qName();
-   impl->endElement_( qName );
+   auto &curElem = impl->curElem_;
+   curElem = ElementName::fromRawName( toUString( name ) );
+
+   impl->endElement_( curElem.qName() );
 }
 
 void XMLCALL characterDataHandler( void *userData, const XML_Char *s, int len )
@@ -263,6 +275,7 @@ void E57XmlParserImplExpat::init()
    XML_SetElementHandler( parser_, startElementHandler, endElementHandler );
    XML_SetCharacterDataHandler( parser_, characterDataHandler );
    XML_SetStartNamespaceDeclHandler( parser_, startNamespaceDeclHandler );
+   // add prefix to the element name
    XML_SetReturnNSTriplet( parser_, 1 );
 }
 
@@ -284,7 +297,17 @@ void E57XmlParserImplExpat::parse( ImageFileImplSharedPtr imf, E57XmlInputSource
       switch ( XML_ParseBuffer( parser_, (int)len, done ) )
       {
          case XML_STATUS_ERROR:
-            throw E57_EXCEPTION2( ErrorXMLParser, "failed to parse XML" );
+         {
+            const auto errorCode = XML_GetErrorCode( parser_ );
+            const auto *errorString = XML_ErrorString( errorCode );
+            const auto offset = XML_GetCurrentByteIndex( parser_ );
+            const auto line = XML_GetCurrentLineNumber( parser_ );
+            const auto column = XML_GetCurrentColumnNumber( parser_ );
+            throw E57_EXCEPTION2(
+               ErrorXMLParser, "errorCode=" + toString( errorCode ) + ", errorString=\"" +
+                                  toUString( errorString ) + "\", offset=" + toString( offset ) +
+                                  ", line=" + toString( line ) + ", column=" + toString( column ) );
+         }
          case XML_STATUS_OK:
             break;
          case XML_STATUS_SUSPENDED:
@@ -295,7 +318,8 @@ void E57XmlParserImplExpat::parse( ImageFileImplSharedPtr imf, E57XmlInputSource
 
 ustring E57XmlParserImplExpat::getContext() const
 {
-   return {};
+   return "fileName=" + imf_->fileName() + " uri=" + curElem_.uri +
+          " localName=" + curElem_.localName + " qName=" + curElem_.qName();
 }
 
 //=============================================================================
