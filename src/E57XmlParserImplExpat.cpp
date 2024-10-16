@@ -34,11 +34,9 @@
 
 using namespace e57;
 
-using xmlstring = std::basic_string<XML_Char>;
-
 namespace
 {
-#ifdef EXPAT_UNICODE
+#ifdef XML_UNICODE
    static_assert( sizeof( XML_Char ) == sizeof( char16_t ),
                   "only 16-bit unicode chars are supported" );
 
@@ -58,22 +56,6 @@ namespace
       std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> converter;
       return converter.to_bytes( u16_str, u16_str + len );
    }
-
-   xmlstring toXMLString( const char *u_str, size_t len = 0 )
-   {
-      if ( u_str == NULL || *u_str == '\0' )
-      {
-         return {};
-      }
-
-      if ( len == 0 )
-      {
-         len = std::char_traits<char>::length( u_str );
-      }
-
-      std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, XML_Char> converter;
-      return converter.from_bytes( u_str, u_str + len );
-   }
 #else
    ustring toUString( const XML_Char *xml_str, size_t len = 0 )
    {
@@ -88,21 +70,6 @@ namespace
       }
 
       return { xml_str, len };
-   }
-
-   xmlstring toXMLString( const char *u_str, size_t len = 0 )
-   {
-      if ( u_str == NULL || *u_str == '\0' )
-      {
-         return {};
-      }
-
-      if ( len == 0 )
-      {
-         len = std::char_traits<char>::length( u_str );
-      }
-
-      return { u_str, len };
    }
 #endif
 
