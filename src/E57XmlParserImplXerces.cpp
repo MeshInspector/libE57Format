@@ -279,7 +279,7 @@ void Parser::parse( E57XmlInputSource &inputSource, E57XmlProcessor &processor )
 
 void Parser::startPrefixMapping( const XMLCh *prefix, const XMLCh *uri )
 {
-   processor_->startNamespace( toUString( prefix ), toUString( uri ) );
+   processor_->startNamespaceDecl( toUString( prefix ), toUString( uri ) );
 }
 
 void Parser::startElement( const XMLCh *uri, const XMLCh *localName, const XMLCh *qName,

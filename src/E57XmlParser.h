@@ -83,7 +83,7 @@ namespace e57
          virtual ustring lookup( const ustring &qName ) const = 0;
       };
 
-      void startNamespace( const ustring &prefix, const ustring &uri );
+      void startNamespaceDecl( const ustring &prefix, const ustring &uri );
       void startElement( const ustring &qName, const AttributeMap &attributes );
       void endElement( const ustring &qName );
       void text( const ustring &text );
@@ -124,7 +124,7 @@ namespace e57
 
       std::stack<ParseInfo> stack_; /// Stores the current path in tree we are reading
 
-      std::map<ustring, ustring> namespaces_;
+      std::map<ustring, ustring> namespaceDecls_;
    };
 
    class E57XmlInputSource

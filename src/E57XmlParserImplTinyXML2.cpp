@@ -145,11 +145,11 @@ bool Parser::VisitEnter( const XMLElement &element, const XMLAttribute *attribut
       const auto name = ustring( attr->Name() );
       if ( name == "xmlns" )
       {
-         processor_->startNamespace( "", attr->Value() );
+         processor_->startNamespaceDecl( "", attr->Value() );
       }
       else if ( name.substr( 0, 6 ) == "xmlns:" )
       {
-         processor_->startNamespace( name.substr( 6 ), attr->Value() );
+         processor_->startNamespaceDecl( name.substr( 6 ), attr->Value() );
       }
    }
 

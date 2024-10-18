@@ -213,7 +213,7 @@ void XMLCALL startNamespaceDeclHandler( void *userData, const XML_Char *prefix,
                                         const XML_Char *uri )
 {
    auto *processor = reinterpret_cast<E57XmlProcessor *>( userData );
-   processor->startNamespace( toUString( prefix ), toUString( uri ) );
+   processor->startNamespaceDecl( toUString( prefix ), toUString( uri ) );
 }
 
 void XMLCALL startElementHandler( void *userData, const XML_Char *name, const XML_Char **attrs )

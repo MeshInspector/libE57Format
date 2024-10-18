@@ -213,9 +213,9 @@ E57XmlProcessor::E57XmlProcessor( ImageFileImplSharedPtr imf ) : imf_( std::move
 {
 }
 
-void E57XmlProcessor::startNamespace( const ustring &prefix, const ustring &uri )
+void E57XmlProcessor::startNamespaceDecl( const ustring &prefix, const ustring &uri )
 {
-   namespaces_.emplace( prefix, uri );
+   namespaceDecls_.emplace( prefix, uri );
 }
 
 void E57XmlProcessor::startElement( const ustring &qName, const AttributeMap &attributes )
@@ -439,7 +439,7 @@ void E57XmlProcessor::startElement( const ustring &qName, const AttributeMap &at
       {
          // Search attributes for namespace declarations (only allowed in E57Root structure)
          bool gotDefault = false;
-         for ( const auto &item : namespaces_ )
+         for ( const auto &item : namespaceDecls_ )
          {
             if ( item.first.empty() )
             {
@@ -552,7 +552,7 @@ void E57XmlProcessor::startElement( const ustring &qName, const AttributeMap &at
       throw E57_EXCEPTION2( ErrorBadXMLFormat, "nodeType=" + node_type + " fileName=" +
                                                   imf_->fileName() + " qName=" + qName );
    }
-   namespaces_.clear();
+   namespaceDecls_.clear();
 #ifdef E57_VERBOSE
    pi.dump( 4 );
 #endif
