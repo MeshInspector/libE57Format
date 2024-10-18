@@ -38,6 +38,7 @@ namespace e57
 
    class E57XmlInputSource;
    class E57XmlParserImpl;
+   class E57XmlProcessor;
 
    class E57XmlParser
    {
@@ -55,66 +56,44 @@ namespace e57
       std::unique_ptr<E57XmlParserImpl> impl_;
    };
 
-   class E57XmlInputSource
-   {
-   public:
-      virtual ~E57XmlInputSource() = default;
-
-      virtual uint64_t length() const = 0;
-      virtual uint64_t curPos() const = 0;
-
-      virtual size_t readBytes( unsigned char *toFill, size_t maxToRead ) = 0;
-   };
-
-   class E57XmlFileInputSource final : public E57XmlInputSource
-   {
-   public:
-      E57XmlFileInputSource( CheckedFile *cf, uint64_t logicalStart, uint64_t logicalLength );
-
-      uint64_t length() const override;
-      uint64_t curPos() const override;
-
-      size_t readBytes( unsigned char *toFill, size_t maxToRead ) override;
-
-   private:
-      //??? lifetime of cf_ must be longer than this object!
-      CheckedFile *cf_;
-      uint64_t logicalStart_;
-      uint64_t logicalLength_;
-      uint64_t logicalPosition_;
-   };
-
    class E57XmlParserImpl
    {
    public:
       virtual ~E57XmlParserImpl() = default;
 
       virtual void init() = 0;
+      virtual void parse( E57XmlInputSource &inputSource, E57XmlProcessor &processor ) = 0;
 
-      virtual void parse( ImageFileImplSharedPtr imf, E57XmlInputSource &inputSource ) = 0;
+      static std::unique_ptr<E57XmlParserImpl> create();
+   };
 
+   class E57XmlProcessor
+   {
+   public:
       class AttributeMap
       {
       public:
          virtual ~AttributeMap() = default;
 
-         virtual bool contains( const ustring &name ) const = 0;
-         virtual ustring lookup( const ustring &name ) const = 0;
+         virtual size_t length() const = 0;
+         virtual ustring getQName( size_t index ) const = 0;
+         virtual ustring getValue( size_t index ) const = 0;
+
+         virtual bool contains( const ustring &qName ) const = 0;
+         virtual ustring lookup( const ustring &qName ) const = 0;
       };
 
-      static std::unique_ptr<E57XmlParserImpl> create();
+      void startNamespace( const ustring &prefix, const ustring &uri );
+      void startElement( const ustring &qName, const AttributeMap &attributes );
+      void endElement( const ustring &qName );
+      void text( const ustring &text );
 
-   protected:
-      void startNamespace_( const ustring &prefix, const ustring &uri );
-      void startElement_( const ustring &qName, const AttributeMap &attributes );
-      void endElement_( const ustring &qName );
-      void characters_( const ustring &s );
+   private:
+      friend class E57XmlParser;
+      explicit E57XmlProcessor( ImageFileImplSharedPtr imf );
 
       ImageFileImplSharedPtr imf_; /// Image file we are reading
 
-      virtual ustring getContext() const = 0;
-
-   private:
       struct ParseInfo
       {
          // All the fields need to remember while parsing the XML
@@ -146,5 +125,34 @@ namespace e57
       std::stack<ParseInfo> stack_; /// Stores the current path in tree we are reading
 
       std::map<ustring, ustring> namespaces_;
+   };
+
+   class E57XmlInputSource
+   {
+   public:
+      virtual ~E57XmlInputSource() = default;
+
+      virtual uint64_t length() const = 0;
+      virtual uint64_t curPos() const = 0;
+
+      virtual size_t readBytes( unsigned char *toFill, size_t maxToRead ) = 0;
+   };
+
+   class E57XmlFileInputSource final : public E57XmlInputSource
+   {
+   public:
+      E57XmlFileInputSource( CheckedFile *cf, uint64_t logicalStart, uint64_t logicalLength );
+
+      uint64_t length() const override;
+      uint64_t curPos() const override;
+
+      size_t readBytes( unsigned char *toFill, size_t maxToRead ) override;
+
+   private:
+      //??? lifetime of cf_ must be longer than this object!
+      CheckedFile *cf_;
+      uint64_t logicalStart_;
+      uint64_t logicalLength_;
+      uint64_t logicalPosition_;
    };
 }

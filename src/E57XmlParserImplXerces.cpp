@@ -141,13 +141,17 @@ private:
 };
 
 //=============================================================================
-// E57XmlParserImpl::AttributeMap
+// E57XmlProcessor::AttributeMap
 
-class AttributeMapImplXerces : public E57XmlParserImpl::AttributeMap
+class AttributeMap : public E57XmlProcessor::AttributeMap
 {
 public:
-   AttributeMapImplXerces( const Attributes &attributes );
-   ~AttributeMapImplXerces() override = default;
+   AttributeMap( const Attributes &attributes );
+   ~AttributeMap() override = default;
+
+   size_t length() const override;
+   ustring getQName( size_t index ) const override;
+   ustring getValue( size_t index ) const override;
 
    bool contains( const ustring &name ) const override;
    ustring lookup( const ustring &name ) const override;
@@ -156,19 +160,33 @@ private:
    const Attributes &attributes_;
 };
 
-AttributeMapImplXerces::AttributeMapImplXerces( const Attributes &attributes ) :
-   attributes_( attributes )
+AttributeMap::AttributeMap( const Attributes &attributes ) : attributes_( attributes )
 {
 }
 
-bool AttributeMapImplXerces::contains( const ustring &name ) const
+size_t AttributeMap::length() const
+{
+   return attributes_.getLength();
+}
+
+ustring AttributeMap::getQName( size_t index ) const
+{
+   return toUString( attributes_.getQName( index ) );
+}
+
+ustring AttributeMap::getValue( size_t index ) const
+{
+   return toUString( attributes_.getValue( index ) );
+}
+
+bool AttributeMap::contains( const ustring &name ) const
 {
    const auto xmlName = toXMLString( name.c_str(), name.size() );
    XMLSize_t attr_index;
    return ( attributes_.getIndex( xmlName.c_str(), attr_index ) );
 }
 
-ustring AttributeMapImplXerces::lookup( const ustring &name ) const
+ustring AttributeMap::lookup( const ustring &name ) const
 {
    const auto xmlName = toXMLString( name.c_str(), name.size() );
    XMLSize_t attr_index;
@@ -180,19 +198,16 @@ ustring AttributeMapImplXerces::lookup( const ustring &name ) const
 }
 
 //=============================================================================
-// E57XmlParserImplXerces
+// E57XmlParserImpl
 
-class E57XmlParserImplXerces final : public E57XmlParserImpl, public DefaultHandler
+class Parser final : public E57XmlParserImpl, public DefaultHandler
 {
 public:
-   ~E57XmlParserImplXerces() override;
+   ~Parser() override;
 
    void init() override;
 
-   void parse( ImageFileImplSharedPtr imf, E57XmlInputSource &inputSource ) override;
-
-protected:
-   ustring getContext() const override;
+   void parse( E57XmlInputSource &inputSource, E57XmlProcessor &processor ) override;
 
 private:
    /// SAX interface
@@ -208,16 +223,10 @@ private:
    void fatalError( const SAXParseException &ex ) override;
 
    SAX2XMLReader *xmlReader{ nullptr };
-
-   struct
-   {
-      const XMLCh *uri{ nullptr };
-      const XMLCh *localName{ nullptr };
-      const XMLCh *qName{ nullptr };
-   } context_;
+   E57XmlProcessor *processor_{ nullptr };
 };
 
-E57XmlParserImplXerces::~E57XmlParserImplXerces()
+Parser::~Parser()
 {
    delete xmlReader;
 
@@ -226,7 +235,7 @@ E57XmlParserImplXerces::~E57XmlParserImplXerces()
    XMLPlatformUtils::Terminate();
 }
 
-void E57XmlParserImplXerces::init()
+void Parser::init()
 {
    // Initialize the XML4C2 system
    try
@@ -261,84 +270,40 @@ void E57XmlParserImplXerces::init()
    xmlReader->setErrorHandler( this );
 }
 
-void E57XmlParserImplXerces::parse( ImageFileImplSharedPtr imf, E57XmlInputSource &inputSource )
+void Parser::parse( E57XmlInputSource &inputSource, E57XmlProcessor &processor )
 {
-   imf_ = std::move( imf );
-
+   processor_ = &processor;
    XercesInputSource xercesInputSource( inputSource );
    xmlReader->parse( xercesInputSource );
 }
 
-ustring E57XmlParserImplXerces::getContext() const
+void Parser::startPrefixMapping( const XMLCh *prefix, const XMLCh *uri )
 {
-   return "fileName=" + imf_->fileName() + " uri=" + toUString( context_.uri ) +
-          " localName=" + toUString( context_.localName ) + " qName=" + toUString( context_.qName );
+   processor_->startNamespace( toUString( prefix ), toUString( uri ) );
 }
 
-void E57XmlParserImplXerces::startPrefixMapping( const XMLCh *prefix, const XMLCh *uri )
+void Parser::startElement( const XMLCh *uri, const XMLCh *localName, const XMLCh *qName,
+                           const Attributes &attributes )
 {
-#ifdef E57_VERBOSE
-   std::cout << "declared namespace, prefix=" + prefix + " URI=" + uri << std::endl;
-#endif
-
-   const auto p = toUString( prefix );
-   const auto u = toUString( uri );
-   E57XmlParserImpl::startNamespace_( p, u );
+   E57_UNUSED( uri );
+   E57_UNUSED( localName );
+   AttributeMap attrMap( attributes );
+   processor_->startElement( toUString( qName ), attrMap );
 }
 
-void E57XmlParserImplXerces::startElement( const XMLCh *uri, const XMLCh *localName,
-                                           const XMLCh *qName, const Attributes &attributes )
+void Parser::endElement( const XMLCh *uri, const XMLCh *localName, const XMLCh *qName )
 {
-#ifdef E57_VERBOSE
-   std::cout << "startElement" << std::endl;
-   std::cout << space( 2 ) << "URI:       " << toUString( uri ) << std::endl;
-   std::cout << space( 2 ) << "localName: " << toUString( localName ) << std::endl;
-   std::cout << space( 2 ) << "qName:     " << toUString( qName ) << std::endl;
-
-   for ( size_t i = 0; i < attributes.getLength(); i++ )
-   {
-      std::cout << space( 2 ) << "Attribute[" << i << "]" << std::endl;
-      std::cout << space( 4 ) << "URI:       " << toUString( attributes.getURI( i ) ) << std::endl;
-      std::cout << space( 4 ) << "localName: " << toUString( attributes.getLocalName( i ) )
-                << std::endl;
-      std::cout << space( 4 ) << "qName:     " << toUString( attributes.getQName( i ) )
-                << std::endl;
-      std::cout << space( 4 ) << "value:     " << toUString( attributes.getValue( i ) )
-                << std::endl;
-   }
-#endif
-
-   // store info for context
-   context_ = { uri, localName, qName };
-
-   AttributeMapImplXerces attrMap( attributes );
-   E57XmlParserImpl::startElement_( toUString( qName ), attrMap );
+   E57_UNUSED( uri );
+   E57_UNUSED( localName );
+   processor_->endElement( toUString( qName ) );
 }
 
-void E57XmlParserImplXerces::endElement( const XMLCh *uri, const XMLCh *localName,
-                                         const XMLCh *qName )
+void Parser::characters( const XMLCh *chars, XMLSize_t length )
 {
-#ifdef E57_VERBOSE
-   std::cout << "endElement" << std::endl;
-#endif
-
-   // store info for context
-   context_ = { uri, localName, qName };
-
-   E57XmlParserImpl::endElement_( toUString( qName ) );
+   processor_->text( toUString( chars, length ) );
 }
 
-void E57XmlParserImplXerces::characters( const XMLCh *chars, XMLSize_t length )
-{
-#ifdef E57_VERBOSE
-   std::cout << "characters, chars=\"" << toUString( chars ) << "\" length=" << length << std::endl;
-#endif
-
-   const auto s = toUString( chars, length );
-   E57XmlParserImpl::characters_( s );
-}
-
-void E57XmlParserImplXerces::warning( const SAXParseException &ex )
+void Parser::warning( const SAXParseException &ex )
 {
    // Don't take any action on warning from parser, just report
    std::cerr << "**** XML parser warning: " << ustring( XMLString::transcode( ex.getMessage() ) )
@@ -349,7 +314,7 @@ void E57XmlParserImplXerces::warning( const SAXParseException &ex )
    std::cerr << ",   xmlColumn=" << ex.getColumnNumber() << std::endl;
 }
 
-void E57XmlParserImplXerces::error( const SAXParseException &ex )
+void Parser::error( const SAXParseException &ex )
 {
    throw E57_EXCEPTION2(
       ErrorXMLParser, "systemId=" + ustring( XMLString::transcode( ex.getSystemId() ) ) +
@@ -358,7 +323,7 @@ void E57XmlParserImplXerces::error( const SAXParseException &ex )
                          " parserMessage=" + ustring( XMLString::transcode( ex.getMessage() ) ) );
 }
 
-void E57XmlParserImplXerces::fatalError( const SAXParseException &ex )
+void Parser::fatalError( const SAXParseException &ex )
 {
    throw E57_EXCEPTION2(
       ErrorXMLParser, "systemId=" + ustring( XMLString::transcode( ex.getSystemId() ) ) +
@@ -372,5 +337,5 @@ void E57XmlParserImplXerces::fatalError( const SAXParseException &ex )
 
 std::unique_ptr<E57XmlParserImpl> E57XmlParserImpl::create()
 {
-   return std::make_unique<E57XmlParserImplXerces>();
+   return std::make_unique<Parser>();
 }

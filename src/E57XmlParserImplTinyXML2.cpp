@@ -28,46 +28,67 @@
 #include <tinyxml2.h>
 
 #include "E57XmlParser.h"
-#include "ImageFileImpl.h"
 #include "StringFunctions.h"
 
 using namespace e57;
 using namespace tinyxml2;
 
 //=============================================================================
-// E57XmlParserImpl::AttributeMap
+// E57XmlProcessor::AttributeMap
 
-class AttributeMapImplTinyXML2 final : public E57XmlParserImpl::AttributeMap
+class AttributeMap final : public E57XmlProcessor::AttributeMap
 {
 public:
-   explicit AttributeMapImplTinyXML2( const XMLAttribute *attributes );
-   ~AttributeMapImplTinyXML2() override = default;
+   explicit AttributeMap( const XMLAttribute *attributes );
+   ~AttributeMap() override = default;
+
+   size_t length() const override;
+   ustring getQName( size_t index ) const override;
+   ustring getValue( size_t index ) const override;
 
    bool contains( const ustring &name ) const override;
    ustring lookup( const ustring &name ) const override;
 
 private:
-   std::map<ustring, const XMLAttribute *> attributes_;
+   const XMLAttribute *attributes_;
+   std::map<ustring, const XMLAttribute *> map_;
 };
 
-AttributeMapImplTinyXML2::AttributeMapImplTinyXML2( const XMLAttribute *attributes )
+AttributeMap::AttributeMap( const XMLAttribute *attributes ) : attributes_( attributes )
 {
    // cache attribute names to speed up the lookup
    for ( const auto *attr = attributes; attr != NULL; attr = attr->Next() )
    {
-      attributes_.emplace( attr->Name(), attr );
+      map_.emplace( attr->Name(), attr );
    }
 }
 
-bool AttributeMapImplTinyXML2::contains( const ustring &name ) const
+size_t AttributeMap::length() const
 {
-   return attributes_.find( name ) != attributes_.end();
+   return map_.size();
 }
 
-ustring AttributeMapImplTinyXML2::lookup( const ustring &name ) const
+ustring AttributeMap::getQName( size_t index ) const
 {
-   const auto it = attributes_.find( name );
-   if ( it == attributes_.end() )
+   const auto &attr = attributes_[index];
+   return attr.Name();
+}
+
+ustring AttributeMap::getValue( size_t index ) const
+{
+   const auto &attr = attributes_[index];
+   return attr.Value();
+}
+
+bool AttributeMap::contains( const ustring &name ) const
+{
+   return map_.find( name ) != map_.end();
+}
+
+ustring AttributeMap::lookup( const ustring &name ) const
+{
+   const auto it = map_.find( name );
+   if ( it == map_.end() )
    {
       throw E57_EXCEPTION2( ErrorBadXMLFormat, "attributeName=" + name );
    }
@@ -75,17 +96,14 @@ ustring AttributeMapImplTinyXML2::lookup( const ustring &name ) const
 }
 
 //=============================================================================
-// E57XmlParserImplExpat
+// E57XmlParserImpl
 
-class E57XmlParserImplTinyXML2 final : public E57XmlParserImpl, public XMLVisitor
+class Parser final : public E57XmlParserImpl, public XMLVisitor
 {
 public:
    void init() override;
 
-   void parse( ImageFileImplSharedPtr imf, E57XmlInputSource &inputSource ) override;
-
-protected:
-   ustring getContext() const override;
+   void parse( E57XmlInputSource &inputSource, E57XmlProcessor &processor ) override;
 
 private:
    bool VisitEnter( const XMLElement &element, const XMLAttribute *attributes ) override;
@@ -93,17 +111,15 @@ private:
    bool Visit( const XMLText &text ) override;
 
    XMLDocument xmlDocument_;
-   ustring curElem_;
+   E57XmlProcessor *processor_{ nullptr };
 };
 
-void E57XmlParserImplTinyXML2::init()
+void Parser::init()
 {
 }
 
-void E57XmlParserImplTinyXML2::parse( ImageFileImplSharedPtr imf, E57XmlInputSource &inputSource )
+void Parser::parse( E57XmlInputSource &inputSource, E57XmlProcessor &processor )
 {
-   imf_ = std::move( imf );
-
    std::string buffer( inputSource.length(), ' ' );
    if ( inputSource.readBytes( (unsigned char *)buffer.data(), buffer.size() ) != buffer.size() )
    {
@@ -117,55 +133,47 @@ void E57XmlParserImplTinyXML2::parse( ImageFileImplSharedPtr imf, E57XmlInputSou
                                "\" line=" + toString( xmlDocument_.ErrorLineNum() ) );
    }
 
+   processor_ = &processor;
    xmlDocument_.Accept( this );
 }
 
-ustring E57XmlParserImplTinyXML2::getContext() const
+bool Parser::VisitEnter( const XMLElement &element, const XMLAttribute *attributes )
 {
-   return "fileName=" + imf_->fileName() + " qName=" + curElem_;
-}
-
-bool E57XmlParserImplTinyXML2::VisitEnter( const XMLElement &element,
-                                           const XMLAttribute *attributes )
-{
-   curElem_ = element.Name();
-
    // find namespace declarations
    for ( const auto *attr = attributes; attr != NULL; attr = attr->Next() )
    {
       const auto name = ustring( attr->Name() );
       if ( name == "xmlns" )
       {
-         E57XmlParserImpl::startNamespace_( "", attr->Value() );
+         processor_->startNamespace( "", attr->Value() );
       }
       else if ( name.substr( 0, 6 ) == "xmlns:" )
       {
-         E57XmlParserImpl::startNamespace_( name.substr( 6 ), attr->Value() );
+         processor_->startNamespace( name.substr( 6 ), attr->Value() );
       }
    }
 
-   const AttributeMapImplTinyXML2 attrMap( attributes );
-   E57XmlParserImpl::startElement_( element.Name(), attrMap );
+   const AttributeMap attrMap( attributes );
+   processor_->startElement( element.Name(), attrMap );
+
    return true;
 }
 
-bool E57XmlParserImplTinyXML2::VisitExit( const XMLElement &element )
+bool Parser::VisitExit( const XMLElement &element )
 {
-   curElem_ = element.Name();
-   E57XmlParserImpl::endElement_( element.Name() );
+   processor_->endElement( element.Name() );
+
    return true;
 }
 
-bool E57XmlParserImplTinyXML2::Visit( const XMLText &text )
+bool Parser::Visit( const XMLText &text )
 {
-   E57XmlParserImpl::characters_( text.Value() );
+   processor_->text( text.Value() );
+
    return true;
 }
-
-//=============================================================================
-// E57XmlParserImpl
 
 std::unique_ptr<E57XmlParserImpl> E57XmlParserImpl::create()
 {
-   return std::make_unique<E57XmlParserImplTinyXML2>();
+   return std::make_unique<Parser>();
 }

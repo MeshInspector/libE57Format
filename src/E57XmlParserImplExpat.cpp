@@ -124,40 +124,62 @@ namespace
 }
 
 //=============================================================================
-// E57XmlParserImpl::AttributeMap
+// E57XmlProcessor::AttributeMap
 
-class AttributeMapImplExpat final : public E57XmlParserImpl::AttributeMap
+class AttributeMap final : public E57XmlProcessor::AttributeMap
 {
 public:
-   explicit AttributeMapImplExpat( const XML_Char **attributes );
-   ~AttributeMapImplExpat() override = default;
+   explicit AttributeMap( const XML_Char **attributes );
+   ~AttributeMap() override = default;
+
+   size_t length() const override;
+   ustring getQName( size_t index ) const override;
+   ustring getValue( size_t index ) const override;
 
    bool contains( const ustring &name ) const override;
    ustring lookup( const ustring &name ) const override;
 
 private:
-   std::map<ustring, const XML_Char *> attributes_;
+   const XML_Char **attributes_;
+   std::map<ustring, const XML_Char *> map_;
 };
 
-AttributeMapImplExpat::AttributeMapImplExpat( const XML_Char **attributes )
+AttributeMap::AttributeMap( const XML_Char **attributes ) : attributes_( attributes )
 {
    // cache attribute names to speed up the lookup and to avoid converting on every call
    for ( const auto **attrPair = attributes; *attrPair != nullptr; attrPair += 2 )
    {
       const auto attrName = ElementName::fromRawName( toUString( attrPair[0] ) );
-      attributes_.emplace( attrName.qName(), attrPair[1] );
+      map_.emplace( attrName.qName(), attrPair[1] );
    }
 }
 
-bool AttributeMapImplExpat::contains( const ustring &name ) const
+size_t AttributeMap::length() const
 {
-   return attributes_.find( name ) != attributes_.end();
+   return map_.size();
 }
 
-ustring AttributeMapImplExpat::lookup( const ustring &name ) const
+ustring AttributeMap::getQName( size_t index ) const
 {
-   const auto it = attributes_.find( name );
-   if ( it == attributes_.end() )
+   const auto *attrPair = attributes_ + 2 * index;
+   return attrPair[0];
+}
+
+ustring AttributeMap::getValue( size_t index ) const
+{
+   const auto *attrPair = attributes_ + 2 * index;
+   return attrPair[1];
+}
+
+bool AttributeMap::contains( const ustring &name ) const
+{
+   return map_.find( name ) != map_.end();
+}
+
+ustring AttributeMap::lookup( const ustring &name ) const
+{
+   const auto it = map_.find( name );
+   if ( it == map_.end() )
    {
       throw E57_EXCEPTION2( ErrorBadXMLFormat, "attributeName=" + name );
    }
@@ -165,19 +187,16 @@ ustring AttributeMapImplExpat::lookup( const ustring &name ) const
 }
 
 //=============================================================================
-// E57XmlParserImplExpat
+// E57XmlParserImpl
 
-class E57XmlParserImplExpat final : public E57XmlParserImpl
+class Parser final : public E57XmlParserImpl
 {
 public:
-   ~E57XmlParserImplExpat() override;
+   ~Parser() override;
 
    void init() override;
 
-   void parse( ImageFileImplSharedPtr imf, E57XmlInputSource &inputSource ) override;
-
-protected:
-   ustring getContext() const override;
+   void parse( E57XmlInputSource &inputSource, E57XmlProcessor &processor ) override;
 
 private:
    friend void XMLCALL startNamespaceDeclHandler( void *userData, const XML_Char *prefix,
@@ -188,74 +207,37 @@ private:
    friend void XMLCALL characterDataHandler( void *userData, const XML_Char *s, int len );
 
    XML_Parser parser_{ nullptr };
-   ElementName curElem_;
 };
 
 void XMLCALL startNamespaceDeclHandler( void *userData, const XML_Char *prefix,
                                         const XML_Char *uri )
 {
-#ifdef E57_VERBOSE
-   std::cout << "startNamespaceDecl, prefix=" + toUString( prefix ) + " URI=" + toUString( uri )
-             << std::endl;
-#endif
-
-   auto *impl = reinterpret_cast<E57XmlParserImplExpat *>( userData );
-   impl->startNamespace_( toUString( prefix ), toUString( uri ) );
+   auto *processor = reinterpret_cast<E57XmlProcessor *>( userData );
+   processor->startNamespace( toUString( prefix ), toUString( uri ) );
 }
 
 void XMLCALL startElementHandler( void *userData, const XML_Char *name, const XML_Char **attrs )
 {
-   auto *impl = reinterpret_cast<E57XmlParserImplExpat *>( userData );
-   auto &curElem = impl->curElem_;
-   curElem = ElementName::fromRawName( toUString( name ) );
-
-#ifdef E57_VERBOSE
-   std::cout << "startElement" << std::endl;
-   std::cout << space( 2 ) << "URI:       " << curElem.uri << std::endl;
-   std::cout << space( 2 ) << "localName: " << curElem.localName << std::endl;
-   std::cout << space( 2 ) << "qName:     " << curElem.qName() << std::endl;
-
-   int i = 0;
-   for ( const auto **attrPair = attrs; *attrPair != nullptr; attrPair += 2 )
-   {
-      const auto attrName = ElementName::fromRawName( toUString( attrPair[0] ) );
-      std::cout << space( 2 ) << "Attribute[" << i << "]" << std::endl;
-      std::cout << space( 4 ) << "URI:       " << attrName.uri << std::endl;
-      std::cout << space( 4 ) << "localName: " << attrName.localName << std::endl;
-      std::cout << space( 4 ) << "qName:     " << attrName.qName() << std::endl;
-      std::cout << space( 4 ) << "value:     " << toUString( attrPair[1] ) << std::endl;
-   }
-#endif
-
-   AttributeMapImplExpat attrMap( attrs );
-   impl->startElement_( curElem.qName(), attrMap );
+   auto *processor = reinterpret_cast<E57XmlProcessor *>( userData );
+   const auto element = ElementName::fromRawName( toUString( name ) );
+   const auto attrMap = AttributeMap( attrs );
+   processor->startElement( element.qName(), attrMap );
 }
 
 void XMLCALL endElementHandler( void *userData, const XML_Char *name )
 {
-#ifdef E57_VERBOSE
-   std::cout << "endElement" << std::endl;
-#endif
-
-   auto *impl = reinterpret_cast<E57XmlParserImplExpat *>( userData );
-   auto &curElem = impl->curElem_;
-   curElem = ElementName::fromRawName( toUString( name ) );
-
-   impl->endElement_( curElem.qName() );
+   auto *processor = reinterpret_cast<E57XmlProcessor *>( userData );
+   const auto element = ElementName::fromRawName( toUString( name ) );
+   processor->endElement( element.qName() );
 }
 
 void XMLCALL characterDataHandler( void *userData, const XML_Char *s, int len )
 {
-#ifdef E57_VERBOSE
-   std::cout << "characterData, chars=\"" << toUString( s, len ) << "\" length=" << len
-             << std::endl;
-#endif
-
-   auto *impl = reinterpret_cast<E57XmlParserImplExpat *>( userData );
-   impl->characters_( toUString( s, len ) );
+   auto *processor = reinterpret_cast<E57XmlProcessor *>( userData );
+   processor->text( toUString( s, len ) );
 }
 
-E57XmlParserImplExpat::~E57XmlParserImplExpat()
+Parser::~Parser()
 {
    if ( parser_ )
    {
@@ -263,7 +245,7 @@ E57XmlParserImplExpat::~E57XmlParserImplExpat()
    }
 }
 
-void E57XmlParserImplExpat::init()
+void Parser::init()
 {
    parser_ = XML_ParserCreateNS( nullptr, expatNamespaceSeparator );
    if ( parser_ == nullptr )
@@ -271,7 +253,6 @@ void E57XmlParserImplExpat::init()
       throw E57_EXCEPTION2( ErrorXMLParserInit, "could not create the xml reader" );
    }
 
-   XML_SetUserData( parser_, this );
    XML_SetElementHandler( parser_, startElementHandler, endElementHandler );
    XML_SetCharacterDataHandler( parser_, characterDataHandler );
    XML_SetStartNamespaceDeclHandler( parser_, startNamespaceDeclHandler );
@@ -279,9 +260,9 @@ void E57XmlParserImplExpat::init()
    XML_SetReturnNSTriplet( parser_, 1 );
 }
 
-void E57XmlParserImplExpat::parse( ImageFileImplSharedPtr imf, E57XmlInputSource &inputSource )
+void Parser::parse( E57XmlInputSource &inputSource, E57XmlProcessor &processor )
 {
-   imf_ = std::move( imf );
+   XML_SetUserData( parser_, &processor );
 
    bool done = false;
    while ( !done )
@@ -316,16 +297,10 @@ void E57XmlParserImplExpat::parse( ImageFileImplSharedPtr imf, E57XmlInputSource
    }
 }
 
-ustring E57XmlParserImplExpat::getContext() const
-{
-   return "fileName=" + imf_->fileName() + " uri=" + curElem_.uri +
-          " localName=" + curElem_.localName + " qName=" + curElem_.qName();
-}
-
 //=============================================================================
 // E57XmlParserImpl
 
 std::unique_ptr<E57XmlParserImpl> E57XmlParserImpl::create()
 {
-   return std::make_unique<E57XmlParserImplExpat>();
+   return std::make_unique<Parser>();
 }
