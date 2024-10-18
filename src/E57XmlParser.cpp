@@ -179,7 +179,7 @@ void E57XmlProcessor::ParseInfo::dump( int indent, std::ostream &os ) const
 // E57XmlParser
 
 E57XmlParser::E57XmlParser( ImageFileImplSharedPtr imf ) :
-   imf_( std::move( imf ) ), impl_( E57XmlParserImpl::create() )
+   processor_( std::move( imf ) ), impl_( E57XmlParserImpl::create() )
 {
 }
 
@@ -202,8 +202,7 @@ void E57XmlParser::parse( E57XmlInputSource &inputSource )
       throw E57_EXCEPTION2( ErrorXMLParserInit, "could not create the xml reader" );
    }
 
-   E57XmlProcessor processor( imf_ );
-   impl_->parse( inputSource, processor );
+   impl_->parse( inputSource, processor_ );
 }
 
 //=============================================================================

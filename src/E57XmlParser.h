@@ -37,39 +37,12 @@ namespace e57
    class CheckedFile;
 
    class E57XmlInputSource;
-   class E57XmlParserImpl;
-   class E57XmlProcessor;
-
-   class E57XmlParser
-   {
-   public:
-      explicit E57XmlParser( ImageFileImplSharedPtr imf );
-      ~E57XmlParser();
-
-      void init();
-
-      void parse( E57XmlInputSource &inputSource );
-
-   private:
-      ImageFileImplSharedPtr imf_; /// Image file we are reading
-
-      std::unique_ptr<E57XmlParserImpl> impl_;
-   };
-
-   class E57XmlParserImpl
-   {
-   public:
-      virtual ~E57XmlParserImpl() = default;
-
-      virtual void init() = 0;
-      virtual void parse( E57XmlInputSource &inputSource, E57XmlProcessor &processor ) = 0;
-
-      static std::unique_ptr<E57XmlParserImpl> create();
-   };
 
    class E57XmlProcessor
    {
    public:
+      explicit E57XmlProcessor( ImageFileImplSharedPtr imf );
+
       class AttributeMap
       {
       public:
@@ -89,9 +62,6 @@ namespace e57
       void text( const ustring &text );
 
    private:
-      friend class E57XmlParser;
-      explicit E57XmlProcessor( ImageFileImplSharedPtr imf );
-
       ImageFileImplSharedPtr imf_; /// Image file we are reading
 
       struct ParseInfo
@@ -125,6 +95,32 @@ namespace e57
       std::stack<ParseInfo> stack_; /// Stores the current path in tree we are reading
 
       std::map<ustring, ustring> namespaceDecls_;
+   };
+
+   class E57XmlParserImpl
+   {
+   public:
+      virtual ~E57XmlParserImpl() = default;
+
+      virtual void init() = 0;
+      virtual void parse( E57XmlInputSource &inputSource, E57XmlProcessor &processor ) = 0;
+
+      static std::unique_ptr<E57XmlParserImpl> create();
+   };
+
+   class E57XmlParser
+   {
+   public:
+      explicit E57XmlParser( ImageFileImplSharedPtr imf );
+      ~E57XmlParser();
+
+      void init();
+
+      void parse( E57XmlInputSource &inputSource );
+
+   private:
+      E57XmlProcessor processor_;
+      std::unique_ptr<E57XmlParserImpl> impl_;
    };
 
    class E57XmlInputSource
