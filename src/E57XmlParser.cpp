@@ -66,6 +66,8 @@ namespace
 #error "Need to define string to long long conversion for this compiler"
 #endif
    }
+
+   std::function<std::unique_ptr<E57XmlParserImpl> ()> customXmlParserImplCreateFunc = {};
 }
 
 //=============================================================================
@@ -179,8 +181,12 @@ void E57XmlProcessor::ParseInfo::dump( int indent, std::ostream &os ) const
 // E57XmlParser
 
 E57XmlParser::E57XmlParser( ImageFileImplSharedPtr imf ) :
-   processor_( std::move( imf ) ), impl_( E57XmlParserImpl::create() )
+   processor_( std::move( imf ) )
 {
+   if ( customXmlParserImplCreateFunc )
+      impl_ = customXmlParserImplCreateFunc();
+   else
+      impl_ = E57XmlParserImpl::create();
 }
 
 E57XmlParser::~E57XmlParser() = default;
@@ -789,4 +795,9 @@ void E57XmlProcessor::text( const ustring &text )
          // Append to any previous characters
          pi.childText += text;
    }
+}
+
+void E57XmlParser::setCustomImpl( std::function<std::unique_ptr<E57XmlParserImpl>()> createFunc )
+{
+   customXmlParserImplCreateFunc = std::move( createFunc );
 }

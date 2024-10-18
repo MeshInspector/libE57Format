@@ -70,9 +70,10 @@ target_sources( E57Format
         E57Version.cpp
         E57XmlParser.cpp
         E57XmlParser.h
-		$<$<STREQUAL:${E57_XML_PARSER},EXPAT>:${CMAKE_CURRENT_SOURCE_DIR}/E57XmlParserImplExpat.cpp>
-		$<$<STREQUAL:${E57_XML_PARSER},TINYXML2>:${CMAKE_CURRENT_SOURCE_DIR}/E57XmlParserImplTinyXML2.cpp>
-		$<$<STREQUAL:${E57_XML_PARSER},XERCES>:${CMAKE_CURRENT_SOURCE_DIR}/E57XmlParserImplXerces.cpp>
+        $<$<STREQUAL:${E57_XML_PARSER},CUSTOM>:${CMAKE_CURRENT_SOURCE_DIR}/E57XmlParserImplCustom.cpp>
+        $<$<STREQUAL:${E57_XML_PARSER},EXPAT>:${CMAKE_CURRENT_SOURCE_DIR}/E57XmlParserImplExpat.cpp>
+        $<$<STREQUAL:${E57_XML_PARSER},TINYXML2>:${CMAKE_CURRENT_SOURCE_DIR}/E57XmlParserImplTinyXML2.cpp>
+        $<$<STREQUAL:${E57_XML_PARSER},XERCES>:${CMAKE_CURRENT_SOURCE_DIR}/E57XmlParserImplXerces.cpp>
 )
 
 target_include_directories( E57Format

@@ -78,9 +78,9 @@ endif()
 
 find_package( Threads REQUIRED )
 
-set( E57_XML_PARSER XERCES CACHE STRING "Used XML library (Xerces, Expat, or TinyXML2)" )
+set( E57_XML_PARSER XERCES CACHE STRING "Used XML library (Xerces, Expat, TinyXML2, or custom only)" )
 string( TOUPPER ${E57_XML_PARSER} E57_XML_PARSER )
-set( E57_SUPPORTED_XML_PARSERS XERCES EXPAT TINYXML2 )
+set( E57_SUPPORTED_XML_PARSERS XERCES EXPAT TINYXML2 CUSTOM )
 if ( NOT E57_XML_PARSER IN_LIST E57_SUPPORTED_XML_PARSERS )
 	message( FATAL_ERROR "Unsupported XML parser" )
 endif()

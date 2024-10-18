@@ -27,6 +27,7 @@
 
 #pragma once
 
+#include <functional>
 #include <map>
 #include <stack>
 
@@ -117,6 +118,8 @@ namespace e57
       void init();
 
       void parse( E57XmlInputSource &inputSource );
+
+      static void setCustomImpl( std::function<std::unique_ptr<E57XmlParserImpl> ()> createFunc );
 
    private:
       E57XmlProcessor processor_;
