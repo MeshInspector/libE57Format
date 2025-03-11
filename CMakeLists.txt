@@ -86,7 +86,7 @@ if ( NOT E57_XML_PARSER IN_LIST E57_SUPPORTED_XML_PARSERS )
 endif()
 
 if( E57_XML_PARSER STREQUAL XERCES )
-	find_package( XercesC REQUIRED )
+	find_package( XercesC 3.2 REQUIRED )
 endif()
 if( E57_XML_PARSER STREQUAL EXPAT )
 	find_package( EXPAT REQUIRED )
@@ -214,17 +214,6 @@ target_compile_definitions( E57Format
 # sanitizers
 include( Sanitizers )
 
-# xerces
-if ( WIN32 AND E57_XML_PARSER STREQUAL XERCES )
-    option( USING_STATIC_XERCES "Turn on if you are linking with Xerces as a static lib" OFF )
-    if ( USING_STATIC_XERCES )
-        target_compile_definitions( E57Format
-            PUBLIC
-                XERCES_STATIC_LIBRARY
-        )
-    endif()
-endif()
-
 # Target Libraries
 if ( E57_XML_PARSER STREQUAL XERCES )
 	target_link_libraries( E57Format PRIVATE XercesC::XercesC )
@@ -270,6 +259,7 @@ if ( E57_BUILD_TEST )
 endif()
 
 # CMake package files
+include( GNUInstallDirs )
 set( E57_INSTALL_CMAKEDIR
     "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}"
      CACHE STRING
@@ -285,9 +275,17 @@ install(
         "${E57_INSTALL_CMAKEDIR}"
 )
 
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file (
+    e57format-config-version.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+
 install(
     FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/cmake/e57format-config.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/e57format-config-version.cmake
     DESTINATION
         "${E57_INSTALL_CMAKEDIR}"
 )
