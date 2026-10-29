@@ -41,7 +41,7 @@ project( E57Format
     LANGUAGES
         CXX
     VERSION
-        3.4.0
+        3.4.1
 )
 
 string( TOUPPER ${PROJECT_NAME} PROJECT_NAME_UPPERCASE )
@@ -77,7 +77,27 @@ if ( E57_BUILDING_SELF )
 endif()
 
 find_package( Threads REQUIRED )
-find_package( XercesC 3.2 REQUIRED )
+
+set( E57_XML_PARSER XERCES CACHE STRING "Used XML library (Xerces, Expat, TinyXML2, or custom only)" )
+string( TOUPPER ${E57_XML_PARSER} E57_XML_PARSER )
+set( E57_SUPPORTED_XML_PARSERS XERCES EXPAT TINYXML2 CUSTOM )
+if ( NOT E57_XML_PARSER IN_LIST E57_SUPPORTED_XML_PARSERS )
+	message( FATAL_ERROR "Unsupported XML parser" )
+endif()
+
+if( E57_XML_PARSER STREQUAL XERCES )
+	find_package( XercesC 3.2 REQUIRED )
+endif()
+if( E57_XML_PARSER STREQUAL EXPAT )
+	find_package( EXPAT REQUIRED )
+endif()
+if( E57_XML_PARSER STREQUAL TINYXML2 )
+	find_package( tinyxml2 QUIET )
+	if( NOT tinyxml2_FOUND )
+		find_package( PkgConfig REQUIRED )
+		pkg_search_module( tinyxml2 REQUIRED IMPORTED_TARGET tinyxml2 )
+	endif()
+endif()
 
 option( E57_BUILD_SHARED
         "Compile E57Format as a shared library"
@@ -211,7 +231,19 @@ target_compile_definitions( E57Format
 include( Sanitizers )
 
 # Target Libraries
-target_link_libraries( E57Format PRIVATE XercesC::XercesC )
+if ( E57_XML_PARSER STREQUAL XERCES )
+	target_link_libraries( E57Format PRIVATE XercesC::XercesC )
+endif()
+if ( E57_XML_PARSER STREQUAL EXPAT )
+	target_link_libraries( E57Format PRIVATE EXPAT::EXPAT )
+endif()
+if ( E57_XML_PARSER STREQUAL TINYXML2 )
+	if( TARGET tinyxml2::tinyxml2 )
+		target_link_libraries( E57Format PRIVATE tinyxml2::tinyxml2 )
+	else()
+		target_link_libraries( E57Format PRIVATE PkgConfig::tinyxml2 )
+	endif()
+endif()
 
 # Install
 install(
@@ -266,9 +298,15 @@ write_basic_package_version_file (
     COMPATIBILITY SameMajorVersion
 )
 
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/e57format-config.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/e57format-config.cmake
+    @ONLY
+)
+
 install(
     FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/cmake/e57format-config.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/e57format-config.cmake
         ${CMAKE_CURRENT_BINARY_DIR}/e57format-config-version.cmake
     DESTINATION
         "${E57_INSTALL_CMAKEDIR}"

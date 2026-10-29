@@ -1,164 +1,43 @@
-# libE57Format
+# libE57Format (MeshInspector fork)
 
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/asmaloney/libE57Format)](https://github.com/asmaloney/libE57Format/releases/latest) [![Docs](https://img.shields.io/badge/docs-online-orange)](https://asmaloney.github.io/libE57Format-docs/) [![GitHub](https://img.shields.io/github/license/asmaloney/libE57Format)](LICENSE) ![Build](https://github.com/asmaloney/libE57Format/actions/workflows/build.yml/badge.svg)
+This is the [MeshInspector](https://github.com/MeshInspector) fork of [asmaloney/libE57Format](https://github.com/asmaloney/libE57Format), a C++ library that reads and writes [E57](https://www.astm.org/e2807-11r19e01.html) point cloud files. [MeshLib](https://github.com/MeshInspector/MeshLib) uses it for E57 import on all its platforms.
 
-libE57Format is a C++ library which provides read & write support for the ASTM-standard [E57 file format](https://www.astm.org/e2807-11r19e01.html) on Linux, macOS, and Windows. E57 files store 3D point cloud data (produced by 3D imaging systems such as laser scanners), attributes associated with 3D point data (color & intensity), and 2D images (photos taken using a 3D imaging system).
+The public API, file-format support and behavior are the same as upstream's. For documentation, the API reference, the changelog and contribution rules, see the [upstream repository](https://github.com/asmaloney/libE57Format) and its [docs](https://asmaloney.github.io/libE57Format-docs/). This README covers only what differs here.
 
-## Documentation
+## Base version
 
-The doxygen-generated documentation may be [found here](https://asmaloney.github.io/libE57Format-docs/). These docs are generated and saved in the [libE57Format-docs](https://github.com/asmaloney/libE57Format-docs) repo.
+`master` = upstream **v3.4.1** + the changes below. To update, rebase those changes onto the next upstream tag.
 
-## Commercial Use
+MeshLib pins exact commits of this repository, in its `thirdparty/libE57Format` submodule, its CPM lock and its vcpkg overlay port. Never force-push `master` or delete a branch whose commits MeshLib still pins.
 
-If you are using this library in commercial software, please [contribute to the project](/CONTRIBUTING.md).
+## Selectable XML parser
 
-Of course the open source license allows you to just take and not give anything back. It is perfectly Legal, but it is not Right and it's not good for the project.
+Upstream always parses the XML section of an E57 file with [Xerces-C++](https://xerces.apache.org/xerces-c/). Here the CMake option `E57_XML_PARSER` selects the parser, case-insensitively:
 
-Over the many years I've worked on this library, I have received precisely _zero_ contributions (PRs, documentation updates, improved testing, financial support) from the many million/billion-dollar companies who use it in their software.
-
-The more companies that leech on Open Source instead of nurturing it, the less healthy & viable the ecosystem is.
-
-## Requirements
-
-- a [C++14](https://en.cppreference.com/w/cpp/14) compatible compiler
-- [CMake](https://cmake.org/) >= 3.15
-- [clang-format](https://clang.llvm.org/docs/ClangFormat.html) for code formatting
-- (_optional_) [ccache](https://ccache.dev/) to speed up rebuilds
-
-## Dependencies
-
-- [Xerces-C++](https://xerces.apache.org/xerces-c/) (for parsing XML)
-
-### Installing Dependencies On Linux (Ubuntu)
+| `E57_XML_PARSER` | Dependency | Notes |
+|---|---|---|
+| `Xerces` (default) | Xerces-C++ >= 3.2 | Same as upstream, including the hardening against external entities and entity expansion. |
+| `TinyXML2` | [TinyXML2](https://github.com/leethomason/tinyxml2) | Used by MeshLib on every platform. Reads the whole XML section into memory and then walks it; the XML section holds only metadata, while point data stays binary and is read in streams as before. |
+| `Expat` | [Expat](https://libexpat.github.io/) | Streaming SAX parser. |
+| `Custom` | none | No parser is built in. Code compiled in-tree must call `E57XmlParser::setCustomImpl()` (in `src/E57XmlParser.h`, not installed) before any file is opened; otherwise opening a file throws `ErrorXMLParserInit`. |
 
 ```sh
-$ sudo apt install libxerces-c-dev clang-format
+cmake -B E57-build -DCMAKE_BUILD_TYPE=Release -DE57_XML_PARSER=TinyXML2 libE57Format
+cmake --build E57-build --parallel
 ```
 
-### Installing Dependencies On macOS (homebrew)
+The parser-independent part (`E57XmlProcessor`, which turns XML events into E57 nodes) stays in `src/E57XmlParser.cpp`. Each parser is a small adapter behind the `E57XmlParserImpl` interface in `src/E57XmlParserImpl<Name>.cpp`, and only the selected one is compiled.
 
-```sh
-$ brew install ccache clang-format xerces-c
-```
+The installed `e57format-config.cmake` is generated from `cmake/e57format-config.cmake.in`. It looks up the dependency of whichever parser the library was built with, so consumers keep using `find_package(E57Format CONFIG)` unchanged. For TinyXML2 it falls back to pkg-config when no CMake package is found.
 
-## Build, Install, & Test
+### Why
 
-Here's how you build & install a release version with the defaults:
+Xerces is a large dependency (about 2.7 MB as a Windows DLL) and is awkward to build for WebAssembly. MeshLib already uses TinyXML2, so with this option E57 support adds no XML library of its own.
 
-```
-$ cmake -B E57-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=E57-install libE57Format
-$ cmake --build E57-build --parallel
-$ cmake --install E57-build
-```
+## Testing
 
-If CMake can't find the xerces-c library, you can set [CMAKE_PREFIX_PATH](https://cmake.org/cmake/help/latest/variable/CMAKE_PREFIX_PATH.html) to point at it.
-
-```
-$ cmake -B E57-build \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_INSTALL_PREFIX=E57-install \
-    -DCMAKE_PREFIX_PATH=/path/to/xerces-c \
-    libE57Format
-```
-
-Once the library is built, you can run the tests like this:
-
-```
-$ cd E57-build
-$ ./test/testE57
-[==========] Running 36 tests from 8 test suites.
-[----------] Global test environment set-up.
-[----------] 1 test from TestData
-[ RUN      ] TestData.RepoExists
-...
-```
-
-See [test/README](test/README.md) for details about testing and the test data.
-
-## 🍴 Fork (2018)
-
-This is a fork of [E57RefImpl](https://sourceforge.net/projects/e57-3d-imgfmt/). The original source is from [E57RefImpl 1.1.332](https://sourceforge.net/projects/e57-3d-imgfmt/files/E57Refimpl-src/).
-
-The original code had not been touched in several years and I wanted to make changes to compile it on macOS. Forking it gave me more freedom to update the code and make changes as required. Everything was stripped out except the main implementation for reading & writing E57 files.
-
-- I changed the name of the project so that it is not confused with the **E57RefImpl** project.
-- I changed the main include file's name from `E57Foundation.h` to `E57Format.h` to make sure there is no inclusion confusion.
-- Versions of **libE57Format** started at 2.0.
-- I fixed it to compile and run on macOS.
-- It no longer depends on [Boost](https://www.boost.org/).
-- It now requires [C++14](https://en.cppreference.com/w/cpp/14). (Version 2.x required [C++11](https://en.cppreference.com/w/cpp/11).)
-
-Many, many other changes were made prior to the first release of this fork, and it has diverged significantly since. See the [CHANGELOG](CHANGELOG.md) and git history for details.
-
-### E57Simple API
-
-[Jiri Hörner](https://github.com/ptc-jhoerner) added the E57Simple API from the old reference implementation and updated it.
-
-This _Simple API_ has evolved since this original port to fix some problems and to make it more foolproof & easier to use. Please see the [CHANGELOG](CHANGELOG.md) for version 3.
-
-## Projects Using libE57Format
-
-- [AliceVision](https://github.com/alicevision/AliceVision)
-- [CloudCompare](https://github.com/CloudCompare/CloudCompare)
-- [MeshLab](https://github.com/cnr-isti-vclab/meshlab)
-- [pye57](https://github.com/davidcaron/pye57)
-- [FreeCAD](https://github.com/FreeCAD/FreeCAD)
-
-These projects use hard forks of libE57Format:
-
-- [MicMac](https://github.com/micmacIGN/micmac)
-- [PDAL](https://github.com/PDAL/PDAL)
-
-There are also many commercial products using libE57Format. If any of them would like to sponsor the project and be listed here, please <a href="mailto:asmaloney@gmail.com?subject=libE57Format Sponsorship">contact Andy</a>.
-
-## How To Contribute
-
-These are some of the things you can do to contribute to the project:
-
-### 💰 Financial
-
-Given that I'm an independent developer without funding, financial support is appreciated. If you would like to support the project financially (especially if you sell a product which uses this library), you can use the [sponsors page](https://github.com/sponsors/asmaloney) for one-off or recurring support, or we can arrange <a href="mailto:asmaloney@gmail.com?subject=libE57Format B2B Sponsorship">B2B invoicing</a> of some kind. Thank you!
-
-### ✍ Write About The Project
-
-If you find the project useful, spread the word! Articles, mastodon posts, tweets, blog posts, instagram photos - whatever you're into. Please include a referral back to the repository page: https://github.com/asmaloney/libE57Format
-
-### ⭐️ Add a Star
-
-If you found this project useful, please consider starring it! It helps me gauge how useful this project is.
-
-### ☝ Raise Issues
-
-If you run into something which doesn't work as expected, raising [an issue](https://github.com/asmaloney/libE57Format/issues) with all the relevant information to reproduce it would be helpful.
-
-### 🐞 Bug Fixes & 🧪 New Things
-
-I am happy to review any [pull requests](https://github.com/asmaloney/libE57Format/pulls). Please keep them as short as possible. Each pull request should be atomic and only address one issue. This helps with the review process.
-
-Note that I will not accept everything, but I welcome discussion. If you are proposing a big change, please raise it as [an issue](https://github.com/asmaloney/libE57Format/issues) first for discussion.
-
-#### Formatting
-
-This project uses [clang-format](https://clang.llvm.org/docs/ClangFormat.html) to format the code. There is a cmake target (_e57-clang-format_) - which runs _clang-format_ on the source files. After changes have been made, and before you submit your pull request, please run the following:
-
-```sh
-cmake --build . --target e57-clang-format
-```
-
-#### Generative "AI" PRs
-
-I am not accepting generative "AI" code into this library at this time.
-
-### 📖 Documentation
-
-The [documentation](https://github.com/asmaloney/libE57Format) is a bit old and could use some lovin'. You can submit changes over in the [libE57Format-docs](https://github.com/asmaloney/libE57Format-docs) repository.
+Upstream's test suite (`-DE57_BUILD_TEST=ON` with [libE57Format-test-data](https://github.com/asmaloney/libE57Format-test-data)) passes unchanged with the `Xerces`, `TinyXML2` and `Expat` parsers.
 
 ## License
 
-This project is licensed under the [**BSL-1.0** license](https://opensource.org/licenses/BSL-1.0) - see the [LICENSE](LICENSE.md) file for details.
-
-Individual source files may contain the following tag instead of the full license text:
-
-    SPDX-License-Identifier: BSL-1.0
-
-Using SPDX enables machine processing of license information based on the [SPDX License Identifiers](https://spdx.org/ids) and makes it easier for developers to see at a glance which license they are dealing with.
+Same as upstream: [BSL-1.0](LICENSE.md).
