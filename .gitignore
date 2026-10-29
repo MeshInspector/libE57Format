@@ -1,3 +1,7 @@
 build
 .vscode
 .cache
+.idea
+cmake-build-*
+.vs
+/CMakeSettings.json

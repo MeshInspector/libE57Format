@@ -93,7 +93,7 @@ namespace e57
 #endif
 
    private:
-      friend class E57XmlParser;
+      friend class E57XmlProcessor;
       friend class BlobNodeImpl;
       friend class CompressedVectorWriterImpl;
       friend class CompressedVectorReaderImpl;

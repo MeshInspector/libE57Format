@@ -27,46 +27,42 @@
 
 #pragma once
 
+#include <functional>
+#include <map>
 #include <stack>
 
-#include <xercesc/sax/InputSource.hpp>
-#include <xercesc/sax2/DefaultHandler.hpp>
-
 #include "Common.h"
-
-using namespace XERCES_CPP_NAMESPACE;
-
-namespace XERCES_CPP_NAMESPACE
-{
-   class SAX2XMLReader;
-}
 
 namespace e57
 {
    class CheckedFile;
 
-   class E57XmlParser : public DefaultHandler
+   class E57XmlInputSource;
+
+   class E57XmlProcessor
    {
    public:
-      explicit E57XmlParser( ImageFileImplSharedPtr imf );
-      ~E57XmlParser() override;
+      explicit E57XmlProcessor( ImageFileImplSharedPtr imf );
 
-      void init();
+      class AttributeMap
+      {
+      public:
+         virtual ~AttributeMap() = default;
 
-      void parse( InputSource &inputSource );
+         virtual size_t length() const = 0;
+         virtual ustring getQName( size_t index ) const = 0;
+         virtual ustring getValue( size_t index ) const = 0;
+
+         virtual bool contains( const ustring &qName ) const = 0;
+         virtual ustring lookup( const ustring &qName ) const = 0;
+      };
+
+      void startNamespaceDecl( const ustring &prefix, const ustring &uri );
+      void startElement( const ustring &qName, const AttributeMap &attributes );
+      void endElement( const ustring &qName );
+      void text( const ustring &text );
 
    private:
-      /// SAX interface
-      void startElement( const XMLCh *uri, const XMLCh *localName, const XMLCh *qName,
-                         const Attributes &attributes ) override;
-      void endElement( const XMLCh *uri, const XMLCh *localName, const XMLCh *qName ) override;
-      void characters( const XMLCh *chars, XMLSize_t length ) override;
-
-      /// SAX error interface
-      void warning( const SAXParseException &ex ) override;
-      void error( const SAXParseException &ex ) override;
-      void fatalError( const SAXParseException &ex ) override;
-
       ImageFileImplSharedPtr imf_; /// Image file we are reading
 
       struct ParseInfo
@@ -99,24 +95,63 @@ namespace e57
 
       std::stack<ParseInfo> stack_; /// Stores the current path in tree we are reading
 
-      SAX2XMLReader *xmlReader;
+      std::map<ustring, ustring> namespaceDecls_;
    };
 
-   class E57XmlFileInputSource : public InputSource
+   class E57XmlParserImpl
+   {
+   public:
+      virtual ~E57XmlParserImpl() = default;
+
+      virtual void init() = 0;
+      virtual void parse( E57XmlInputSource &inputSource, E57XmlProcessor &processor ) = 0;
+
+      static std::unique_ptr<E57XmlParserImpl> create();
+   };
+
+   class E57XmlParser
+   {
+   public:
+      explicit E57XmlParser( ImageFileImplSharedPtr imf );
+      ~E57XmlParser();
+
+      void init();
+
+      void parse( E57XmlInputSource &inputSource );
+
+      static void setCustomImpl( std::function<std::unique_ptr<E57XmlParserImpl> ()> createFunc );
+
+   private:
+      E57XmlProcessor processor_;
+      std::unique_ptr<E57XmlParserImpl> impl_;
+   };
+
+   class E57XmlInputSource
+   {
+   public:
+      virtual ~E57XmlInputSource() = default;
+
+      virtual uint64_t length() const = 0;
+      virtual uint64_t curPos() const = 0;
+
+      virtual size_t readBytes( unsigned char *toFill, size_t maxToRead ) = 0;
+   };
+
+   class E57XmlFileInputSource final : public E57XmlInputSource
    {
    public:
       E57XmlFileInputSource( CheckedFile *cf, uint64_t logicalStart, uint64_t logicalLength );
-      ~E57XmlFileInputSource() override = default;
 
-      E57XmlFileInputSource( const E57XmlFileInputSource & ) = delete;
-      E57XmlFileInputSource &operator=( const E57XmlFileInputSource & ) = delete;
+      uint64_t length() const override;
+      uint64_t curPos() const override;
 
-      BinInputStream *makeStream() const override;
+      size_t readBytes( unsigned char *toFill, size_t maxToRead ) override;
 
    private:
       //??? lifetime of cf_ must be longer than this object!
       CheckedFile *cf_;
       uint64_t logicalStart_;
       uint64_t logicalLength_;
+      uint64_t logicalPosition_;
    };
 }
