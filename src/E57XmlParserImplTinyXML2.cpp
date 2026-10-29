@@ -25,6 +25,8 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include <vector>
+
 #include <tinyxml2.h>
 
 #include "E57XmlParser.h"
@@ -50,34 +52,33 @@ public:
    ustring lookup( const ustring &name ) const override;
 
 private:
-   const XMLAttribute *attributes_;
+   std::vector<const XMLAttribute *> list_;
    std::map<ustring, const XMLAttribute *> map_;
 };
 
-AttributeMap::AttributeMap( const XMLAttribute *attributes ) : attributes_( attributes )
+AttributeMap::AttributeMap( const XMLAttribute *attributes )
 {
-   // cache attribute names to speed up the lookup
+   // XMLAttribute is a linked list: keep it indexable, and cache names to speed up the lookup
    for ( const auto *attr = attributes; attr != NULL; attr = attr->Next() )
    {
+      list_.push_back( attr );
       map_.emplace( attr->Name(), attr );
    }
 }
 
 size_t AttributeMap::length() const
 {
-   return map_.size();
+   return list_.size();
 }
 
 ustring AttributeMap::getQName( size_t index ) const
 {
-   const auto &attr = attributes_[index];
-   return attr.Name();
+   return list_.at( index )->Name();
 }
 
 ustring AttributeMap::getValue( size_t index ) const
 {
-   const auto &attr = attributes_[index];
-   return attr.Value();
+   return list_.at( index )->Value();
 }
 
 bool AttributeMap::contains( const ustring &name ) const
